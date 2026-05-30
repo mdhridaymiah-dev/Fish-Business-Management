@@ -1,0 +1,6 @@
+{
+  "name": "Fish Business Management",
+  "description": "Multi-user Fish Business Management ERP System with Bengali support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
