@@ -25,6 +25,7 @@ import com.example.ui.FarmViewModel
 fun InventoryScreen(viewModel: FarmViewModel, onAddItem: () -> Unit) {
     val inventory by viewModel.allInventory.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val userRole = currentUser?.role ?: "ADMIN"

@@ -8,6 +8,7 @@ class FarmRepository(private val farmDao: FarmDao) {
 
     // Users
     val allUsers: Flow<List<User>> = farmDao.getAllUsersFlow()
+    suspend fun getAllUsersDirect(): List<User> = farmDao.getAllUsersDirect()
     
     suspend fun getUserByEmail(email: String): User? = farmDao.getUserByEmail(email)
     suspend fun getUserByMobile(mobile: String): User? = farmDao.getUserByMobile(mobile)
@@ -60,14 +61,20 @@ class FarmRepository(private val farmDao: FarmDao) {
     suspend fun updateCancelRequest(request: ShareholderCancelRequest) = farmDao.updateCancelRequest(request)
     suspend fun deleteCancelRequest(request: ShareholderCancelRequest) = farmDao.deleteCancelRequest(request)
 
+    // Shareholder Objections
+    val allObjections: Flow<List<Objection>> = farmDao.getAllObjectionsFlow()
+    suspend fun insertObjection(objection: Objection): Long = farmDao.insertObjection(objection)
+    suspend fun updateObjection(objection: Objection) = farmDao.updateObjection(objection)
+    suspend fun deleteObjection(objection: Objection) = farmDao.deleteObjection(objection)
+
     // Seed method
     suspend fun seedDatabaseIfEmpty() {
         val projects = farmDao.getAllProjectsDirect()
         val users = farmDao.getAllUsersDirect()
         
-        // If users table is empty, we must seed the users so login works!
-        if (users.isEmpty()) {
-            val p1Id = projects.getOrNull(0)?.id ?: 1
+        // Always ensure at least the Admin user exists so we don't lock out mdhridaymiah@gmail.com
+        val hasAdmin = users.any { it.email.equals("mdhridaymiah@gmail.com", ignoreCase = true) || it.role == "ADMIN" }
+        if (!hasAdmin) {
             farmDao.insertUser(
                 User(
                     fullName = "Admin Hridoy",
@@ -81,6 +88,11 @@ class FarmRepository(private val farmDao: FarmDao) {
                     status = "Active"
                 )
             )
+        }
+
+        val hasManager = users.any { it.email.equals("manager@example.com", ignoreCase = true) || it.mobile == "01700000002" }
+        if (!hasManager) {
+            val p1Id = projects.getOrNull(0)?.id ?: 1
             farmDao.insertUser(
                 User(
                     fullName = "Manager Karim",
@@ -94,6 +106,11 @@ class FarmRepository(private val farmDao: FarmDao) {
                     status = "Active"
                 )
             )
+        }
+
+        val hasShareholder = users.any { it.email.equals("shareholder@example.com", ignoreCase = true) || it.mobile == "01700000003" }
+        if (!hasShareholder) {
+            val p1Id = projects.getOrNull(0)?.id ?: 1
             farmDao.insertUser(
                 User(
                     fullName = "Rahim Shareholder",

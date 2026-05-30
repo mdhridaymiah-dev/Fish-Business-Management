@@ -32,6 +32,7 @@ fun DashboardScreen(viewModel: FarmViewModel) {
     val expenses by viewModel.allExpenses.collectAsState()
     val sales by viewModel.allSales.collectAsState()
     val activityLogs by viewModel.activityLogs.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val userRole = currentUser?.role ?: "ADMIN"

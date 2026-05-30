@@ -12,7 +12,7 @@ interface FarmDao {
     @Query("SELECT * FROM users")
     suspend fun getAllUsersDirect(): List<User>
 
-    @Query("SELECT * FROM users WHERE email = :email LIMIT 1")
+    @Query("SELECT * FROM users WHERE LOWER(email) = LOWER(:email) LIMIT 1")
     suspend fun getUserByEmail(email: String): User?
 
     @Query("SELECT * FROM users WHERE mobile = :mobile LIMIT 1")
@@ -135,4 +135,17 @@ interface FarmDao {
 
     @Delete
     suspend fun deleteCancelRequest(request: ShareholderCancelRequest)
+
+    // --- Shareholder Objections / Discrepancy Claims ---
+    @Query("SELECT * FROM objections ORDER BY id DESC")
+    fun getAllObjectionsFlow(): Flow<List<Objection>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertObjection(objection: Objection): Long
+
+    @Update
+    suspend fun updateObjection(objection: Objection)
+
+    @Delete
+    suspend fun deleteObjection(objection: Objection)
 }

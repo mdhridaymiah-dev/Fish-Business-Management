@@ -30,6 +30,7 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
     val sales by viewModel.allSales.collectAsState()
     val expenses by viewModel.allExpenses.collectAsState()
     val cancelRequests by viewModel.allCancelRequests.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val activeUserVal = currentUser
@@ -40,6 +41,14 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
 
     var showCancelDialog by remember { mutableStateOf(false) }
     var shareholderToCancel by remember { mutableStateOf<User?>(null) }
+
+    var showRejectRequestDialog by remember { mutableStateOf(false) }
+    var requestToReject by remember { mutableStateOf<ShareholderCancelRequest?>(null) }
+
+    var activeSubTab by remember { mutableStateOf("ledger") }
+    var showRaiseObjectionDialog by remember { mutableStateOf(false) }
+    var showReplyDialog by remember { mutableStateOf(false) }
+    var objectionToReply by remember { mutableStateOf<Objection?>(null) }
 
     // Active shareholders list
     val activeShareholders = remember(users) {
@@ -101,10 +110,11 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
 
             // Notice panel if the logged-in user is currently queued for cancellation
             currentUser?.let { user ->
-                val currentNotice = cancelRequests.find { it.shareholderId == user.id && it.status == "PENDING" }
+                val currentNotice = cancelRequests.find { it.shareholderId == user.id && (it.status == "PENDING" || it.status == "REJECTED") }
                 if (currentNotice != null) {
+                    val isRejected = currentNotice.status == "REJECTED"
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFCDD2)),
+                        colors = CardDefaults.cardColors(containerColor = if (isRejected) Color(0xFFFFF3E0) else Color(0xFFFFCDD2)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -113,21 +123,36 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(Icons.Default.Warning, contentDescription = "Notice", tint = Color.Red)
+                            Icon(
+                                imageVector = if (isRejected) Icons.Default.Cancel else Icons.Default.Warning,
+                                contentDescription = "Notice",
+                                tint = if (isRejected) Color(0xFFE81111) else Color.Red
+                            )
                             Column {
                                 Text(
-                                    text = viewModel.t("OFFICIAL MEMBERSHIP CANCELLATION NOTICE", "সদস্যপদ বাতিলকরণের নোটিশ"),
+                                    text = if (isRejected) {
+                                        viewModel.t("MEMBERSHIP CANCELLATION PROPOSAL REJECTED", "সদস্যপদ বাতিল প্রস্তাব প্রত্যাখ্যান করা হয়েছে")
+                                    } else {
+                                        viewModel.t("OFFICIAL MEMBERSHIP CANCELLATION NOTICE", "সদস্যপদ বাতিলকরণের নোটিশ")
+                                    },
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
-                                    color = Color(0xFFC62828)
+                                    color = if (isRejected) Color(0xFFB71C1C) else Color(0xFFC62828)
                                 )
                                 Text(
-                                    text = viewModel.t(
-                                        "An action is in progress to cancel your shareholder subscription. Shares will transfer to ${currentNotice.buyerName}.",
-                                        "আপনার শেয়ারহোল্ডার বাতিল করার একটি রিকোয়েস্ট প্রক্রিয়াধীন রয়েছে। আপনার শেয়ারটি '${currentNotice.buyerName}' এর নিকট স্থানান্তরিত হবে।"
-                                    ),
+                                    text = if (isRejected) {
+                                        viewModel.t(
+                                            "Your cancellation request was rejected. Details:\n${currentNotice.rejectionReason}",
+                                            "আপনার সদস্যপদ বাতিলের আবেদনটি বাতিল করা হয়েছে। বিস্তারিত তথ্য নিচে দেওয়া হলো:\n${currentNotice.rejectionReason}"
+                                        )
+                                    } else {
+                                        viewModel.t(
+                                            "An action is in progress to cancel your shareholder subscription. Shares will transfer to ${currentNotice.buyerName}.",
+                                            "আপনার শেয়ারহোল্ডার বাতিল করার একটি রিকোয়েস্ট প্রক্রিয়াধীন রয়েছে। আপনার শেয়ারটি '${currentNotice.buyerName}' এর নিকট স্থানান্তরিত হবে।"
+                                        )
+                                    },
                                     fontSize = 11.sp,
-                                    color = Color(0xFFB71C1C)
+                                    color = if (isRejected) Color.DarkGray else Color(0xFFB71C1C)
                                 )
                             }
                         }
@@ -136,8 +161,15 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
             }
 
             // Pending Cancel Requests block for other shareholders to approve
-            val otherCancelRequests = cancelRequests.filter { 
-                it.status == "PENDING" && it.shareholderId != activeUserVal?.id 
+            val otherCancelRequests = cancelRequests.filter { req ->
+                if (req.status != "PENDING" || req.shareholderId == activeUserVal?.id) {
+                    false
+                } else if (userRole == "ADMIN") {
+                    true
+                } else {
+                    val targetUser = users.find { it.id == req.shareholderId }
+                    targetUser != null && activeUserVal != null && targetUser.assignedProjectId == activeUserVal.assignedProjectId
+                }
             }
             if (otherCancelRequests.isNotEmpty()) {
                 Text(
@@ -182,12 +214,40 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
                                 }
 
                                 if (userRole == "SHAREHOLDER" && !hasApproved) {
-                                    Button(
-                                        onClick = { viewModel.approveCancelRequest(req, currentUser?.id ?: 0) },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
-                                        shape = RoundedCornerShape(8.dp)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.padding(top = 4.dp)
                                     ) {
-                                        Text(viewModel.t("Approve", "অনুমোদন দিন"), fontSize = 11.sp, color = Color.White)
+                                        Button(
+                                            onClick = { viewModel.approveCancelRequest(req, activeUserVal?.id ?: 0) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Text(viewModel.t("Approve", "অনুমোদন"), fontSize = 10.sp, color = Color.White)
+                                        }
+                                        Button(
+                                            onClick = {
+                                                requestToReject = req
+                                                showRejectRequestDialog = true
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Text(viewModel.t("Reject", "প্রত্যাখ্যান"), fontSize = 10.sp, color = Color.White)
+                                        }
+                                        Button(
+                                            onClick = { viewModel.deleteCancelRequest(req) },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Text(viewModel.t("Reject & Delete", "বাতিল ও মুছুন"), fontSize = 10.sp, color = Color.White)
+                                        }
                                     }
                                 } else if (hasApproved) {
                                     Box(
@@ -205,65 +265,272 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
                 }
             }
 
-            if (scopedShareholders.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Groups,
-                            contentDescription = "Empty",
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = viewModel.t("No active shareholders seeded or found.", "কোনো শেয়ারহোল্ডার রেকর্ড পাওয়া যায়নি।"),
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            val objections by viewModel.allObjections.collectAsState()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TabButton(
+                    text = viewModel.t("Capital Ledger", "শেয়ারহোল্ডার পার্টনার তালিকা"),
+                    selected = activeSubTab == "ledger",
+                    onClick = { activeSubTab = "ledger" },
+                    modifier = Modifier.weight(1.3f)
+                )
+                TabButton(
+                    text = viewModel.t("Objections (${objections.size})", "তথ্য গরমিল আপত্তি (${objections.size})"),
+                    selected = activeSubTab == "objections",
+                    onClick = { activeSubTab = "objections" },
+                    modifier = Modifier.weight(1.3f)
+                )
+            }
+
+            if (activeSubTab == "ledger") {
+                if (scopedShareholders.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Groups,
+                                contentDescription = "Empty",
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = viewModel.t("No active shareholders seeded or found.", "কোনো শেয়ারহোল্ডার রেকর্ড পাওয়া যায়নি।"),
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = viewModel.t("Individual Holdings Ledger", "শেয়ারহোল্ডার ক্যাপিটাল লেজার"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(scopedShareholders) { partner ->
+                            ShareholderItemCard(
+                                partner = partner,
+                                projects = projects,
+                                sales = sales,
+                                expenses = expenses,
+                                currency = currency,
+                                userRole = userRole,
+                                viewModel = viewModel,
+                                onEdit = {
+                                    selectedUserForEdit = partner
+                                    showFormDialog = true
+                                },
+                                onCancelRequest = {
+                                    shareholderToCancel = partner
+                                    showCancelDialog = true
+                                },
+                                onDelete = {
+                                    viewModel.deleteUser(partner)
+                                }
+                            )
+                        }
                     }
                 }
             } else {
-                Text(
-                    text = viewModel.t("Individual Holdings Ledger", "শেয়ারহোল্ডার ক্যাপিটাল লেজার"),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.weight(1f)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    items(scopedShareholders) { partner ->
-                        ShareholderItemCard(
-                            partner = partner,
-                            projects = projects,
-                            sales = sales,
-                            expenses = expenses,
-                            currency = currency,
-                            userRole = userRole,
-                            viewModel = viewModel,
-                            onEdit = {
-                                selectedUserForEdit = partner
-                                showFormDialog = true
-                            },
-                            onCancelRequest = {
-                                shareholderToCancel = partner
-                                showCancelDialog = true
-                            },
-                            onDelete = {
-                                viewModel.deleteUser(partner)
+                    Text(
+                        text = viewModel.t("Public Objections Ledger", "তথ্য গরমিল আপত্তি ও সমাধান"),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    if (userRole == "SHAREHOLDER") {
+                        Button(
+                            onClick = { showRaiseObjectionDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Icon(Icons.Default.NewReleases, contentDescription = "Raise Objection", modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(viewModel.t("Raise Objection", "আপত্তি জানান"), fontSize = 11.sp)
+                        }
+                    }
+                }
+
+                if (objections.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Celebration, contentDescription = "No Objections", tint = Color.Gray, modifier = Modifier.size(54.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(viewModel.t("No active discrepancy objections raised. Excellent parity!", "কোন গরমিল বা আপত্তি পাওয়া যায়নি। সকল তথ্য সঠিক আছে।"), fontSize = 12.sp, color = Color.Gray)
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(objections) { objection ->
+                            Card(
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column {
+                                            Text(
+                                                text = objection.projectName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 14.sp,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "${viewModel.t("By:", "দাখিলকারী:")} ${objection.shareholderName} | ${objection.date}",
+                                                fontSize = 11.sp,
+                                                color = Color.DarkGray
+                                            )
+                                        }
+
+                                        val (statusText, statusBg, statusColor) = when (objection.status) {
+                                            "PENDING" -> Triple(viewModel.t("Pending Objection", "অনিষ্পন্ন আপত্তি"), Color(0xFFFFEBEE), Color(0xFFC62828))
+                                            "REPLIED" -> Triple(viewModel.t("Admin Replied", "জবাব দেওয়া হয়েছে"), Color(0xFFE3F2FD), Color(0xFF1565C0))
+                                            else -> Triple(viewModel.t("Resolved ✅", "নিষ্পত্তি হয়েছে ✅"), Color(0xFFE8F5E9), Color(0xFF2E7D32))
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(statusBg)
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(statusText, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = objection.title,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = objection.description,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    if (objection.referenceType.isNotBlank()) {
+                                        Text(
+                                            text = "${viewModel.t("Category:", "গরমিল বিভাগ:")} ${objection.referenceType}",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.DarkGray,
+                                            modifier = Modifier.padding(top = 4.dp)
+                                        )
+                                    }
+
+                                    objection.adminReply?.let { reply ->
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color(0xFFFFF9C4))
+                                                .padding(10.dp)
+                                        ) {
+                                            Text(viewModel.t("Admin clarification response:", "এডমিনের স্পষ্টীকরণ জবাব:"), fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFFF57F17))
+                                            Text(reply, fontSize = 12.sp, color = Color.Black)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    // Action buttons depending on status and role
+                                    if (userRole == "ADMIN" && objection.status == "PENDING") {
+                                        Button(
+                                            onClick = {
+                                                objectionToReply = objection
+                                                showReplyDialog = true
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                                            modifier = Modifier.align(Alignment.End)
+                                        ) {
+                                            Text(viewModel.t("Reply Clarification", "জবাব প্রদান করুন"), fontSize = 11.sp, color = Color.White)
+                                        }
+                                    }
+
+                                    val isCreator = activeUserVal != null && activeUserVal.id == objection.shareholderId
+                                    if (isCreator && objection.status == "REPLIED") {
+                                        Button(
+                                            onClick = {
+                                                viewModel.resolveObjection(objection)
+                                            },
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                            modifier = Modifier.align(Alignment.End)
+                                        ) {
+                                            Text(viewModel.t("Confirm & Settle Objection", "নিষ্পত্তি নিশ্চিত করুন"), fontSize = 11.sp, color = Color.White)
+                                        }
+                                    }
+                                }
                             }
-                        )
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showRaiseObjectionDialog) {
+        RaiseObjectionDialog(
+            projects = projects,
+            viewModel = viewModel,
+            onDismiss = { showRaiseObjectionDialog = false },
+            onSave = { projId, projName, titleText, descText, refT ->
+                viewModel.raiseObjection(projId, projName, titleText, descText, refT)
+                showRaiseObjectionDialog = false
+            }
+        )
+    }
+
+    if (showReplyDialog && objectionToReply != null) {
+        ObjectionReplyDialog(
+            objection = objectionToReply!!,
+            viewModel = viewModel,
+            onDismiss = {
+                showReplyDialog = false
+                objectionToReply = null
+            },
+            onConfirm = { replyTxt ->
+                viewModel.replyToObjection(objectionToReply!!, replyTxt)
+                showReplyDialog = false
+                objectionToReply = null
+            }
+        )
     }
 
     if (showFormDialog) {
@@ -311,6 +578,21 @@ fun ShareholdersScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
                 ) { success ->
                     if (success) showCancelDialog = false
                 }
+            }
+        )
+    }
+
+    if (showRejectRequestDialog && requestToReject != null) {
+        RejectionReasonDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showRejectRequestDialog = false
+                requestToReject = null
+            },
+            onConfirm = { reason ->
+                viewModel.rejectCancelRequest(requestToReject!!, activeUserVal?.id ?: 0, reason)
+                showRejectRequestDialog = false
+                requestToReject = null
             }
         )
     }
@@ -728,6 +1010,169 @@ fun ShareholderFormDialog(
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.minimumInteractiveComponentSize()) {
                 Text(viewModel.t("Abort", "বাতিল"))
+            }
+        }
+    )
+}
+
+@Composable
+fun TabButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.height(40.dp)
+    ) {
+        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+    }
+}
+
+@Composable
+fun RaiseObjectionDialog(
+    projects: List<Project>,
+    viewModel: FarmViewModel,
+    onDismiss: () -> Unit,
+    onSave: (Int, String, String, String, String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+    var selectedProjId by remember { mutableStateOf(projects.firstOrNull()?.id ?: 0) }
+    var refType by remember { mutableStateOf("GENERAL") } // "GENERAL", "SALE", "EXPENSE"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(viewModel.t("Raise Discrepancy Objection", "তথ্য গরমিল আপত্তি জানান"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(viewModel.t("Which project has discrepancy?", "কোন প্রজেক্টের তথ্যে গরমিল রয়েছে?"))
+                projects.forEach { proj ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (selectedProjId == proj.id) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selectedProjId = proj.id }
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedProjId == proj.id,
+                            onClick = { selectedProjId = proj.id }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(proj.name, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text(viewModel.t("Objection Topic (eg. Feed calculation, Fish Weight)", "আপত্তির বিষয় বা টাইটেল")) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text(viewModel.t("Provide detailed explanation", "বিস্তারিত গরমিল বিবরণ")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+
+                Text(viewModel.t("Related Topic Category", "সম্পর্কিত বিষয়"))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("GENERAL", "SALE", "EXPENSE").forEach { cat ->
+                        FilterChip(
+                            selected = refType == cat,
+                            onClick = { refType = cat },
+                            label = { Text(cat) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val projName = projects.find { it.id == selectedProjId }?.name ?: "Unknown"
+                    if (title.isNotBlank() && description.isNotBlank()) {
+                        onSave(selectedProjId, projName, title, description, refType)
+                    }
+                }
+            ) {
+                Text(viewModel.t("Submit Objection", "আপত্তি দাখিল করুন"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(viewModel.t("Cancel", "বাতিল"))
+            }
+        }
+    )
+}
+
+@Composable
+fun ObjectionReplyDialog(
+    objection: Objection,
+    viewModel: FarmViewModel,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var replyText by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(viewModel.t("Admin Response / Clarification", "আপত্তির স্পষ্টীকরণ ও জবাব দিন"), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "${viewModel.t("Topic:", "আপত্তির বিষয়:")} ${objection.title}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp
+                )
+                Text(
+                    text = "${viewModel.t("Description:", "অভিযোগকারী বর্ণনা:")} ${objection.description}",
+                    fontSize = 11.sp,
+                    color = Color.DarkGray
+                )
+                OutlinedTextField(
+                    value = replyText,
+                    onValueChange = { replyText = it },
+                    label = { Text(viewModel.t("Type response reply details", "সমাধানমূলক মন্তব্য বা জবাব লিখুন")) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (replyText.isNotBlank()) {
+                        onConfirm(replyText)
+                    }
+                }
+            ) {
+                Text(viewModel.t("Submit Reply", "জবাব প্রদান করুন"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(viewModel.t("Cancel", "বাতিল"))
             }
         }
     )

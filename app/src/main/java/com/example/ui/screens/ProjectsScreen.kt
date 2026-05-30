@@ -27,6 +27,7 @@ fun ProjectsScreen(viewModel: FarmViewModel, onAddProject: () -> Unit) {
     val projects by viewModel.allProjects.collectAsState()
     val users by viewModel.allUsers.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val userRole = currentUser?.role ?: "ADMIN"
@@ -133,7 +134,7 @@ fun ProjectsScreen(viewModel: FarmViewModel, onAddProject: () -> Unit) {
             project = selectedProjectForEdit,
             viewModel = viewModel,
             onDismiss = { showFormDialog = false },
-            onSave = { name, pond, size, fish, qty, start, harvest, invest, statusMsg ->
+            onSave = { name, pond, size, fish, qty, start, harvest, invest, statusMsg, manualExp ->
                 val newProj = Project(
                     id = selectedProjectForEdit?.id ?: 0,
                     name = name,
@@ -144,7 +145,8 @@ fun ProjectsScreen(viewModel: FarmViewModel, onAddProject: () -> Unit) {
                     startDate = start,
                     estimatedHarvestDate = harvest,
                     investmentAmount = invest,
-                    status = statusMsg
+                    status = statusMsg,
+                    manualExpense = manualExp
                 )
                 viewModel.saveProject(newProj) { success ->
                     if (success) showFormDialog = false
@@ -237,6 +239,30 @@ fun ProjectItemCard(
                 }
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Dynamic Approved Expenses & Admin Manually Entered Total Expenses
+            val projExpenses = remember(viewModel.allExpenses.collectAsState().value, project.id) {
+                viewModel.allExpenses.value
+                    .filter { it.projectId == project.id && (it.isApproved || it.approvalStatus == "APPROVED") }
+                    .sumOf { it.amount }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFFFEBEE).copy(alpha = 0.5f)).padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(viewModel.t("Approved Vouchered Expense", "অনুমোদিত ভাউচার খরচ"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("$currency $projExpenses", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(viewModel.t("Admin Documented Total Expense", "মোট খামার চাষাবিল খরচ (এন্ট্রিকৃত)"), fontSize = 11.sp, color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
+                    Text("$currency ${project.manualExpense}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFC62828))
+                }
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -286,7 +312,7 @@ fun ProjectFormDialog(
     project: Project?,
     viewModel: FarmViewModel,
     onDismiss: () -> Unit,
-    onSave: (String, String, Double, String, Int, String, String, Double, String) -> Unit
+    onSave: (String, String, Double, String, Int, String, String, Double, String, Double) -> Unit
 ) {
     var name by remember { mutableStateOf(project?.name ?: "") }
     var pondName by remember { mutableStateOf(project?.pondName ?: "") }
@@ -297,6 +323,7 @@ fun ProjectFormDialog(
     var harvestDate by remember { mutableStateOf(project?.estimatedHarvestDate ?: "") }
     var investStr by remember { mutableStateOf(project?.investmentAmount?.toString() ?: "") }
     var status by remember { mutableStateOf(project?.status ?: "Active") }
+    var manualExpenseStr by remember { mutableStateOf(project?.manualExpense?.toString() ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -348,6 +375,15 @@ fun ProjectFormDialog(
                         modifier = Modifier.weight(1f).minimumInteractiveComponentSize()
                     )
                 }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = manualExpenseStr,
+                        onValueChange = { manualExpenseStr = it },
+                        label = { Text(viewModel.t("Total Expense (মোট খরচ) BDT", "মোট চাষ খরচ (BDT) (এন্ট্রি)")) },
+                        modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = startDate,
@@ -392,8 +428,9 @@ fun ProjectFormDialog(
                     val sizeVal = pondSizeStr.toDoubleOrNull() ?: 0.0
                     val qtyVal = stockQtyStr.toIntOrNull() ?: 0
                     val investVal = investStr.toDoubleOrNull() ?: 0.0
+                    val manualExpVal = manualExpenseStr.toDoubleOrNull() ?: 0.0
                     if (name.isNotBlank() && fishType.isNotBlank() && startDate.isNotBlank()) {
-                        onSave(name, pondName, sizeVal, fishType, qtyVal, startDate, harvestDate, investVal, status)
+                        onSave(name, pondName, sizeVal, fishType, qtyVal, startDate, harvestDate, investVal, status, manualExpVal)
                     }
                 },
                 modifier = Modifier.minimumInteractiveComponentSize()

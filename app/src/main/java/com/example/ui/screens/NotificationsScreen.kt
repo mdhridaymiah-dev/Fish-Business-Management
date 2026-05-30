@@ -21,6 +21,19 @@ import com.example.ui.FarmViewModel
 @Composable
 fun NotificationsScreen(viewModel: FarmViewModel) {
     val notificationList by viewModel.allNotifications.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
+    val currentUser by viewModel.currentUser.collectAsState()
+    
+    val userRole = currentUser?.role ?: "SHAREHOLDER"
+    val userProjId = currentUser?.assignedProjectId
+
+    val visibleNotifications = remember(notificationList, userRole, userProjId) {
+        if (userRole == "ADMIN") {
+            notificationList
+        } else {
+            notificationList.filter { it.projectId == null || it.projectId == userProjId }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -35,31 +48,31 @@ fun NotificationsScreen(viewModel: FarmViewModel) {
         ) {
             Column {
                 Text(
-                    "System Notifications Hub",
+                    viewModel.t("System Notifications Hub", "সিস্টেম নোটিফিকেশন হাব"),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    "Real-time alerts, stock limits warns, sale alerts, and cost updates.",
+                    viewModel.t("Real-time alerts, stock limits warns, sale alerts, and cost updates.", "রিয়েল-টাইম অ্যালার্ট, স্টক লিমিট ওয়ার্নিং, সেলস অ্যালার্ট এবং খরচের আপডেট।"),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            if (notificationList.isNotEmpty()) {
+            if (visibleNotifications.isNotEmpty()) {
                 TextButton(
                     onClick = { viewModel.markNotificationsRead() },
                     modifier = Modifier.minimumInteractiveComponentSize()
                 ) {
-                    Text("Clear Badges", fontSize = 12.sp)
+                    Text(viewModel.t("Clear Badges", "ব্যাজ পরিষ্কার করুন"), fontSize = 12.sp)
                 }
             }
         }
 
         Divider()
 
-        if (notificationList.isEmpty()) {
+        if (visibleNotifications.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -75,12 +88,12 @@ fun NotificationsScreen(viewModel: FarmViewModel) {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "No active notifications in the pipeline.",
+                        viewModel.t("No active notifications in the pipeline.", "পাইপলাইনে কোনো সক্রিয় নোটিফিকেশন নেই।"),
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "Excellent. All stocking levels and expenses are in stable check status.",
+                        viewModel.t("Excellent. All stocking levels and expenses are in stable check status.", "চমৎকার। সব স্টক লেভেল এবং ব্যয় নিয়ন্ত্রণের মধ্যে রয়েছে।"),
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                         modifier = Modifier.padding(top = 4.dp)
@@ -92,7 +105,7 @@ fun NotificationsScreen(viewModel: FarmViewModel) {
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                items(notificationList) { alert ->
+                items(visibleNotifications) { alert ->
                     NotificationCard(
                         alert = alert,
                         onDismissTap = {

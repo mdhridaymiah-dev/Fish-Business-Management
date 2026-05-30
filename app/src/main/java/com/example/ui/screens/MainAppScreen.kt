@@ -244,8 +244,17 @@ fun MainAppScreen(
                                 )
                             }
                             
+                            val visibleNotificationsList = remember(notificationList, userRole, currentUser) {
+                                val userProjId = currentUser?.assignedProjectId
+                                if (userRole == "ADMIN") {
+                                    notificationList
+                                } else {
+                                    notificationList.filter { it.projectId == null || it.projectId == userProjId }
+                                }
+                            }
+                            
                             // Notifications Badge
-                            val unreadCount = notificationList.size
+                            val unreadCount = visibleNotificationsList.size
                             Box {
                                 IconButton(
                                     onClick = { showNotifMenu = !showNotifMenu },
@@ -292,14 +301,14 @@ fun MainAppScreen(
                                             }
                                         }
                                         Divider()
-                                        if (notificationList.isEmpty()) {
+                                        if (visibleNotificationsList.isEmpty()) {
                                             DropdownMenuItem(
                                                 text = { Text("No active alerts. Stable pond status.", fontSize = 12.sp) },
                                                 onClick = { showNotifMenu = false },
                                                 modifier = Modifier.minimumInteractiveComponentSize()
                                             )
                                         } else {
-                                            notificationList.forEach { notif ->
+                                            visibleNotificationsList.forEach { notif ->
                                                 Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()

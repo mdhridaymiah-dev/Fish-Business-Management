@@ -23,6 +23,7 @@ import com.example.ui.FarmViewModel
 fun CustomersScreen(viewModel: FarmViewModel, onAddCustomer: () -> Unit) {
     val customers by viewModel.allCustomers.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val userRole = currentUser?.role ?: "ADMIN"

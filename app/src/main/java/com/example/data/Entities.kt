@@ -29,7 +29,8 @@ data class Project(
     val startDate: String,
     val estimatedHarvestDate: String,
     val investmentAmount: Double,
-    val status: String = "Active" // "Active", "Completed"
+    val status: String = "Active", // "Active", "Completed"
+    val manualExpense: Double = 0.0 // Admin logged/input project total expense
 ) : Serializable
 
 @Entity(tableName = "inventory")
@@ -60,7 +61,8 @@ data class Expense(
     val requesterId: Int = 0,
     val isPettyCash: Boolean = false,
     val approvedByShareholders: String = "", // Comma-separated list of shareholder user IDs who approved
-    val approvalStatus: String = "PENDING" // "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED"
+    val approvalStatus: String = "PENDING", // "PENDING", "PARTIALLY_APPROVED", "APPROVED", "REJECTED"
+    val rejectionReason: String = ""
 ) : Serializable
 
 @Entity(tableName = "sales")
@@ -75,7 +77,9 @@ data class Sale(
     val buyerName: String,
     val paymentMethod: String, // "Cash", "Bank", "Bkash", "Nagad"
     val invoiceNumber: String,
-    val projectId: Int
+    val projectId: Int,
+    val receivedAmount: Double = 0.0, // Collected/Received amount
+    val dueAmount: Double = 0.0       // Due/Remaining receivable
 ) : Serializable
 
 @Entity(tableName = "customers")
@@ -96,7 +100,8 @@ data class Notification(
     val message: String,
     val date: String,
     val type: String, // "low_inventory", "new_expense", "new_sale", "harvest_reminder", "profit_update"
-    val isRead: Boolean = false
+    val isRead: Boolean = false,
+    val projectId: Int? = null
 ) : Serializable
 
 @Entity(tableName = "shareholder_cancel_requests")
@@ -113,5 +118,22 @@ data class ShareholderCancelRequest(
     val buyerEmail: String? = null,
     val buyerPassword: String? = null,
     val approvedUserIds: String = "", // Comma-separated user IDs who approved (except the canceled one)
-    val status: String = "PENDING" // "PENDING", "APPROVED", "REJECTED"
+    val status: String = "PENDING", // "PENDING", "APPROVED", "REJECTED"
+    val rejectionReason: String = ""
+) : Serializable
+
+@Entity(tableName = "objections")
+data class Objection(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val projectId: Int,
+    val projectName: String,
+    val title: String,
+    val description: String,
+    val shareholderId: Int,
+    val shareholderName: String,
+    val adminReply: String? = null,
+    val status: String = "PENDING", // "PENDING", "REPLIED", "RESOLVED"
+    val date: String,
+    val referenceType: String = "", // "SALE", "EXPENSE", "PROJECT"
+    val referenceId: Int? = null
 ) : Serializable

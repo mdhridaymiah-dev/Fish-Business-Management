@@ -28,6 +28,7 @@ fun ExpensesScreen(viewModel: FarmViewModel, onAddExpense: () -> Unit) {
     val projects by viewModel.allProjects.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
     val users by viewModel.allUsers.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val userRole = currentUser?.role ?: "SHAREHOLDER"
@@ -35,12 +36,30 @@ fun ExpensesScreen(viewModel: FarmViewModel, onAddExpense: () -> Unit) {
 
     var showFormDialog by remember { mutableStateOf(false) }
     var selectedExpenseForEdit by remember { mutableStateOf<Expense?>(null) }
+
+    var showRejectDialog by remember { mutableStateOf(false) }
+    var expenseToReject by remember { mutableStateOf<Expense?>(null) }
+    var isRejectByShareholder by remember { mutableStateOf(false) }
     
-    // Admins see all expenses, others see their project-specific expenses
-    val visibleExpenses = remember(expenses, userRole, userProjId) {
-        if (userRole == "ADMIN") expenses
+    // Admins see all expenses, others see their project-specific expenses.
+    // If one user rejects, other users who have NOT approved should NOT see this request anymore
+    val visibleExpenses = remember(expenses, userRole, userProjId, currentUser) {
+        val activeUserVal = currentUser
+        val baseList = if (userRole == "ADMIN") expenses
         else if (userProjId != null) expenses.filter { it.projectId == userProjId }
-        else expenses // General fallback to maintain continuous visual
+        else expenses
+
+        baseList.filter { expense ->
+            if (expense.approvalStatus == "REJECTED") {
+                val hasApproved = activeUserVal != null && expense.approvedByShareholders.split(",").contains(activeUserVal.id.toString())
+                val isRequester = activeUserVal != null && expense.requesterId == activeUserVal.id
+                val isAdmin = userRole == "ADMIN"
+                
+                isAdmin || isRequester || hasApproved
+            } else {
+                true
+            }
+        }
     }
 
     Scaffold(
@@ -131,8 +150,18 @@ fun ExpensesScreen(viewModel: FarmViewModel, onAddExpense: () -> Unit) {
                                     viewModel.approveExpenseByShareholder(expense, user.id, !alreadyApproved)
                                 }
                             },
+                            onRejectToggle = {
+                                expenseToReject = expense
+                                isRejectByShareholder = true
+                                showRejectDialog = true
+                            },
                             onAdminDirectApprove = {
                                 viewModel.approveExpense(expense)
+                            },
+                            onAdminReject = {
+                                expenseToReject = expense
+                                isRejectByShareholder = false
+                                showRejectDialog = true
                             },
                             onDelete = {
                                 viewModel.deleteExpense(expense)
@@ -171,6 +200,28 @@ fun ExpensesScreen(viewModel: FarmViewModel, onAddExpense: () -> Unit) {
             }
         )
     }
+
+    if (showRejectDialog && expenseToReject != null) {
+        RejectionReasonDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showRejectDialog = false
+                expenseToReject = null
+            },
+            onConfirm = { reason ->
+                val currentExp = expenseToReject!!
+                if (isRejectByShareholder) {
+                    currentUser?.let { user ->
+                        viewModel.rejectExpenseByShareholder(currentExp, user.id, reason)
+                    }
+                } else {
+                    viewModel.rejectExpense(currentExp, reason)
+                }
+                showRejectDialog = false
+                expenseToReject = null
+            }
+        )
+    }
 }
 
 @Composable
@@ -184,7 +235,9 @@ fun ExpenseCard(
     viewModel: FarmViewModel,
     onEdit: () -> Unit,
     onApproveToggle: () -> Unit,
+    onRejectToggle: () -> Unit,
     onAdminDirectApprove: () -> Unit,
+    onAdminReject: () -> Unit,
     onDelete: () -> Unit
 ) {
     val projectShareholders = remember(users, expense.projectId) {
@@ -238,16 +291,19 @@ fun ExpenseCard(
                 val pillColor = when(expense.approvalStatus) {
                     "APPROVED" -> Color(0xFFE8F5E9)
                     "PARTIALLY_APPROVED" -> Color(0xFFE0F7FA)
+                    "REJECTED" -> Color(0xFFFFEBEE)
                     else -> Color(0xFFFFF3E0)
                 }
                 val pillText = when(expense.approvalStatus) {
                     "APPROVED" -> viewModel.t("APPROVED", "অনুমোদিত")
                     "PARTIALLY_APPROVED" -> viewModel.t("PARTIALLY APPROVED", "আংশিক অনুমোদিত")
+                    "REJECTED" -> viewModel.t("REJECTED", "প্রত্যাখ্যাত")
                     else -> viewModel.t("PENDING", "পেন্ডিং")
                 }
                 val textColor = when(expense.approvalStatus) {
                     "APPROVED" -> Color(0xFF2E7D32)
                     "PARTIALLY_APPROVED" -> Color(0xFF006064)
+                    "REJECTED" -> Color(0xFFC62828)
                     else -> Color(0xFFE65100)
                 }
 
@@ -308,6 +364,31 @@ fun ExpenseCard(
                 )
             }
 
+            if (expense.approvalStatus == "REJECTED" && expense.rejectionReason.isNotBlank()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFECEB)),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF16E63)),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = viewModel.t("Rejection remarks / কারণ বিবরণী:", "প্রত্যাখ্যানের বিবরণ ও রিমার্কস:"),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = Color(0xFFC62828)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = expense.rejectionReason,
+                            fontSize = 11.sp,
+                            color = Color.DarkGray
+                        )
+                    }
+                }
+            }
+
             // Quick approvals or editing actions
             Spacer(modifier = Modifier.height(12.dp))
             Row(
@@ -317,52 +398,119 @@ fun ExpenseCard(
             ) {
                 // Shareholder interactive approval click trigger
                 if (isUserShareholder) {
-                    Button(
-                        onClick = onApproveToggle,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (hasApprovedAlready) Color(0xFF2E7D32) else Color(0xFF006A6A)
-                        ),
-                        modifier = Modifier.minimumInteractiveComponentSize(),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = if (hasApprovedAlready) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = Color.White
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = if (hasApprovedAlready) viewModel.t("Approved ✅", "অনুমোদন দিয়েছেন ✅") else viewModel.t("Approve", "অনুমোদন দিন"),
-                            fontSize = 11.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Button(
+                            onClick = onApproveToggle,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (hasApprovedAlready) Color(0xFF2E7D32) else Color(0xFF006C6C)
+                            ),
+                            modifier = Modifier.minimumInteractiveComponentSize().height(32.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (hasApprovedAlready) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                contentDescription = null,
+                                modifier = Modifier.size(11.dp),
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = if (hasApprovedAlready) viewModel.t("Approved ✅", "অনুমোদিত ✅") else viewModel.t("Approve", "অনুমোদন"),
+                                fontSize = 9.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        if (expense.approvalStatus != "REJECTED" && !hasApprovedAlready) {
+                            Button(
+                                onClick = onRejectToggle,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFE65100)
+                                ),
+                                modifier = Modifier.minimumInteractiveComponentSize().height(32.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = viewModel.t("Reject", "প্রত্যাখ্যান"),
+                                    fontSize = 9.sp,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            
+                            Button(
+                                onClick = onDelete,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFC62828)
+                                ),
+                                modifier = Modifier.minimumInteractiveComponentSize().height(32.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = viewModel.t("Reject & Delete", "বাতিল ও মুছুন"),
+                                    fontSize = 9.sp,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                } else if (currentUser?.role == "ADMIN" && !expense.isApproved) {
+                    // Admin pending review of application
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Button(
+                            onClick = onAdminDirectApprove,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.minimumInteractiveComponentSize().height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(viewModel.t("Approve", "অনুমোদন"), fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                        
+                        if (expense.approvalStatus != "REJECTED") {
+                            Button(
+                                onClick = onAdminReject,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.minimumInteractiveComponentSize().height(32.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(viewModel.t("Reject", "প্রত্যাখ্যান"), fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        
+                        Button(
+                            onClick = onDelete,
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.minimumInteractiveComponentSize().height(32.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(viewModel.t("Reject & Delete", "বাতিল ও মুছুন"), fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
                     }
                 } else {
                     Spacer(modifier = Modifier.width(1.dp))
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (currentUser?.role == "ADMIN" && !expense.isApproved) {
-                        Button(
-                            onClick = onAdminDirectApprove,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF004D40)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.minimumInteractiveComponentSize(),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
-                        ) {
-                            Text(viewModel.t("Admin Force Pass", "এডমিন চূড়ান্ত অনুমোদন"), fontSize = 10.sp, color = Color.White)
-                        }
-                    }
-
                     if (currentUser?.role == "ADMIN" || currentUser?.id == expense.requesterId) {
                         IconButton(onClick = onEdit, modifier = Modifier.minimumInteractiveComponentSize()) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit Cost", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         }
                     }
-                    if (currentUser?.role == "ADMIN") {
+                    if (currentUser?.role == "ADMIN" && expense.isApproved) {
                         IconButton(onClick = onDelete, modifier = Modifier.minimumInteractiveComponentSize()) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete Cost", tint = Color.Red, modifier = Modifier.size(18.dp))
                         }
@@ -550,6 +698,62 @@ fun ExpenseFormDialog(
         },
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.minimumInteractiveComponentSize()) {
+                Text(viewModel.t("Cancel", "বাতিল"))
+            }
+        }
+    )
+}
+
+@Composable
+fun RejectionReasonDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+    viewModel: FarmViewModel
+) {
+    var reason by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = viewModel.t("Enter Rejection Reason", "প্রত্যাখ্যানের সুনির্দিষ্ট কারণ লিখুন"),
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = viewModel.t(
+                        "Please state why you are rejecting this request so that other users can understand the context in the remarks panel:",
+                        "দয়া করে এই আবেদনটি প্রত্যাখ্যান বা বাতিল করার কারণটি লিখুন যাতে অন্যান্য ইউজার রিমার্কস প্যানেলে এর বিবরণ দেখতে পারেন:"
+                    ),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { reason = it },
+                    label = { Text(viewModel.t("Rejection Reason", "প্রত্যাখ্যানের কারণ / মন্তব্য")) },
+                    placeholder = { Text(viewModel.t("e.g. Budget exceeded, incorrect information etc.", "যেমন: অতিরিক্ত বাজেট, ভুল তথ্য এন্ট্রি ইত্যাদি")) },
+                    modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize(),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(reason) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                modifier = Modifier.minimumInteractiveComponentSize()
+            ) {
+                Text(viewModel.t("Confirm Reject", "প্রত্যাখ্যান নিশ্চিত করুন"))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.minimumInteractiveComponentSize()
+            ) {
                 Text(viewModel.t("Cancel", "বাতিল"))
             }
         }

@@ -35,6 +35,7 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
     val allCustomers: StateFlow<List<Customer>>
     val allNotifications: StateFlow<List<Notification>>
     val allCancelRequests: StateFlow<List<ShareholderCancelRequest>>
+    val allObjections: StateFlow<List<Objection>>
 
     // Filters & States for UI
     val selectedProjectFilter = MutableStateFlow<Int?>(null) // null = All Projects
@@ -117,6 +118,9 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
 
         allCancelRequests = repository.allCancelRequests
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        allObjections = repository.allObjections
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     }
 
     fun navigateTo(screen: String) {
@@ -127,9 +131,16 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
     fun login(emailOrMobile: String, password: String): Boolean {
         var success = false
         viewModelScope.launch {
-            // 1. First, search locally in the Room database cache
-            var matchedUser = allUsers.value.find { 
-                (it.email.equals(emailOrMobile, ignoreCase = true) || it.mobile == emailOrMobile) && it.password == password 
+            val trimmedInput = emailOrMobile.trim()
+            // 1. First, search locally in the Room database directly to bypass Flow latency
+            var matchedUser = repository.getUserByEmail(trimmedInput) ?: repository.getUserByMobile(trimmedInput)
+            if (matchedUser != null && matchedUser.password != password) {
+                matchedUser = null
+            }
+            if (matchedUser == null) {
+                matchedUser = allUsers.value.find { 
+                    (it.email.equals(trimmedInput, ignoreCase = true) || it.mobile == trimmedInput) && it.password == password 
+                }
             }
             
             // 2. If not found locally, and a live Supabase connection is established, query Supabase authorities directly
@@ -211,6 +222,19 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
     // --- User Management (Admin Only) ---
     fun saveUser(user: User, callback: (Boolean) -> Unit) {
         viewModelScope.launch {
+            val emailCheck = user.email.trim()
+            val mobileCheck = user.mobile.trim()
+            val userByEmail = if (emailCheck.isNotBlank()) repository.getUserByEmail(emailCheck) else null
+            val userByMobile = if (mobileCheck.isNotBlank()) repository.getUserByMobile(mobileCheck) else null
+            if ((userByEmail != null && userByEmail.id != user.id) || (userByMobile != null && userByMobile.id != user.id)) {
+                _uiMessage.emit(t(
+                    "Error: A user with this email or mobile already exists.",
+                    "ত্রুটি: এই ইমেইল বা মোবাইল নম্বরটি দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে।"
+                ))
+                callback(false)
+                return@launch
+            }
+
             // Check project share validation if role is SHAREHOLDER
             if (user.role == "SHAREHOLDER" && user.assignedProjectId != null) {
                 val sumShares = allUsers.value
@@ -238,6 +262,35 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             _uiMessage.emit("User record saved successfully.")
+            callback(true)
+        }
+    }
+
+    fun registerNewUser(user: User, callback: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val emailCheck = user.email.trim()
+            val mobileCheck = user.mobile.trim()
+            val userByEmail = if (emailCheck.isNotBlank()) repository.getUserByEmail(emailCheck) else null
+            val userByMobile = if (mobileCheck.isNotBlank()) repository.getUserByMobile(mobileCheck) else null
+            if (userByEmail != null || userByMobile != null) {
+                _uiMessage.emit(t(
+                    "Error: A user with this email or mobile already exists.",
+                    "ত্রুটি: এই ইমেইল বা মোবাইল নম্বরটি দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা হয়েছে।"
+                ))
+                callback(false)
+                return@launch
+            }
+            
+            repository.insertUser(user)
+            logActivity("User registered: ${user.fullName} (${user.role})")
+            _uiMessage.emit(t(
+                "Registration successful!",
+                "সাফল্যের সাথে অ্যাকাউন্ট তৈরি করা হয়েছে!"
+            ))
+            
+            // Try to sync to Supabase so that other devices can see this registrant immediately!
+            syncToSupabase()
+            
             callback(true)
         }
     }
@@ -349,7 +402,8 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                         title = if (finalExpense.isPettyCash) "New Petty Cash purchase request" else "New purchase request (Needs Approval)",
                         message = "${currentUser.value?.fullName} requested approval for: ${finalExpense.title} (BDT ${finalExpense.amount}).",
                         date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                        type = "new_expense"
+                        type = "new_expense",
+                        projectId = finalExpense.projectId
                     )
                 )
             } else {
@@ -404,7 +458,8 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                         title = "Expense Fully Approved",
                         message = "Expense '${expense.title}' of BDT ${expense.amount} has been fully approved by all shareholders.",
                         date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                        type = "profit_update"
+                        type = "profit_update",
+                        projectId = expense.projectId
                     )
                 )
             } else if (finalStatus == "PARTIALLY_APPROVED") {
@@ -413,7 +468,8 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                         title = "Expense Partially Approved",
                         message = "Expense '${expense.title}' is partially approved ($approvedCount/$totalShareholdersCount shareholders).",
                         date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                        type = "new_expense"
+                        type = "new_expense",
+                        projectId = expense.projectId
                     )
                 )
             }
@@ -431,10 +487,59 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                     title = "Expense Approved",
                     message = "Expense '${expense.title}' of BDT ${expense.amount} has been approved. Net profits updated.",
                     date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                    type = "profit_update"
+                    type = "profit_update",
+                    projectId = expense.projectId
                 )
             )
             _uiMessage.emit("Expense transaction approved. Cost share calculated.")
+        }
+    }
+
+    fun rejectExpense(expense: Expense, reason: String) {
+        viewModelScope.launch {
+            val userReason = if (reason.isNotBlank()) reason else "No specific comments"
+            val detailString = "Request ID: EX-${expense.id}\nDetails: ${expense.title} (Amount: BDT ${expense.amount})\nRejected by Admin\nReason: $userReason"
+            val rejected = expense.copy(
+                isApproved = false,
+                approvalStatus = "REJECTED",
+                rejectionReason = detailString
+            )
+            repository.updateExpense(rejected)
+            logActivity("Rejected expense ID: ${expense.id} (BDT ${expense.amount}) for project ID ${expense.projectId}. Reason: $reason")
+            repository.insertNotification(
+                Notification(
+                    title = "Expense Rejected",
+                    message = "Expense '${expense.title}' of BDT ${expense.amount} was rejected. Reason: $reason",
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    type = "alert",
+                    projectId = expense.projectId
+                )
+            )
+            _uiMessage.emit("Expense transaction has been rejected.")
+        }
+    }
+
+    fun rejectExpenseByShareholder(expense: Expense, shareholderId: Int, reason: String) {
+        viewModelScope.launch {
+            val userReason = if (reason.isNotBlank()) reason else "No specific comments"
+            val detailString = "Request ID: EX-${expense.id}\nDetails: ${expense.title} (Amount: BDT ${expense.amount})\nRejected by Shareholder ID: $shareholderId\nReason: $userReason"
+            val rejected = expense.copy(
+                isApproved = false,
+                approvalStatus = "REJECTED",
+                rejectionReason = detailString
+            )
+            repository.updateExpense(rejected)
+            logActivity("Shareholder ID $shareholderId rejected purchase '${expense.title}'. Status: REJECTED. Reason: $reason")
+            repository.insertNotification(
+                Notification(
+                    title = "Expense Rejected by Partner",
+                    message = "Expense '${expense.title}' was rejected by a shareholder partner. Reason: $reason",
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    type = "alert",
+                    projectId = expense.projectId
+                )
+            )
+            _uiMessage.emit("Expense transaction rejected.")
         }
     }
 
@@ -457,7 +562,8 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                         title = "New Fish Sale Registered",
                         message = "Sold ${sale.weight} kg of ${sale.fishType} from Project ID ${sale.projectId} to ${sale.buyerName} for BDT ${sale.totalPrice}.",
                         date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                        type = "new_sale"
+                        type = "new_sale",
+                        projectId = sale.projectId
                     )
                 )
             } else {
@@ -474,6 +580,83 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
             repository.deleteSale(sale)
             logActivity("Deleted Sales receipt: ${sale.invoiceNumber}.")
             _uiMessage.emit("Sales entry removed.")
+        }
+    }
+
+    // --- Shareholder Objection Management ---
+    fun raiseObjection(projectId: Int, projectName: String, title: String, description: String, refType: String, refId: Int? = null) {
+        viewModelScope.launch {
+            val user = currentUser.value
+            if (user != null) {
+                val objection = Objection(
+                    projectId = projectId,
+                    projectName = projectName,
+                    title = title,
+                    description = description,
+                    shareholderId = user.id,
+                    shareholderName = user.fullName,
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    referenceType = refType,
+                    referenceId = refId,
+                    status = "PENDING"
+                )
+                repository.insertObjection(objection)
+                logActivity("Raised objection for $projectName: $title.")
+                
+                repository.insertNotification(
+                    Notification(
+                        title = if (isBengali.value) "রিসিভড নতুন আপত্তি!" else "New Objection Raised!",
+                        message = if (isBengali.value) "${user.fullName} প্রজেক্ট '$projectName' এর '$title' তথ্যে গরমিল সম্পর্কে আপত্তি জানিয়েছেন।" else "${user.fullName} raised an objection about '$title' in project '$projectName'.",
+                        date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        type = "alert",
+                        projectId = projectId
+                    )
+                )
+                _uiMessage.emit(if (isBengali.value) "গরমিল আপত্তি সফলভাবে নথিভুক্ত হয়েছে।" else "Objection raised successfully.")
+            }
+        }
+    }
+
+    fun replyToObjection(objection: Objection, reply: String) {
+        viewModelScope.launch {
+            val updated = objection.copy(
+                adminReply = reply,
+                status = "REPLIED"
+            )
+            repository.updateObjection(updated)
+            logActivity("Replied to objection '${objection.title}'.")
+            
+            repository.insertNotification(
+                Notification(
+                    title = if (isBengali.value) "আপত্তির জবাব দেওয়া হয়েছে" else "Admin Replied to Objection",
+                    message = if (isBengali.value) "প্রজেক্ট '${objection.projectName}' এর আপত্তিতে এডমিন মন্তব্য করেছেন: '$reply'." else "Admin commented on the objection for '${objection.projectName}': '$reply'.",
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    type = "low_inventory",
+                    projectId = objection.projectId
+                )
+            )
+            _uiMessage.emit(if (isBengali.value) "আপত্তির জবাব দেওয়া সম্পন্ন হয়েছে।" else "Reply submitted successfully.")
+        }
+    }
+
+    fun resolveObjection(objection: Objection) {
+        viewModelScope.launch {
+            val updated = objection.copy(
+                status = "RESOLVED"
+            )
+            repository.updateObjection(updated)
+            logActivity("Resolved/Disposed objection '${objection.title}'.")
+            
+            repository.insertNotification(
+                Notification(
+                    title = if (isBengali.value) "আপত্তি নিষ্পত্তি সম্পন্ন" else "Objection Resolved",
+                    message = if (isBengali.value) "শেয়ারহোল্ডার '${objection.shareholderName}' আপত্তিটি নিষ্পত্তি নিশ্চিত করেছেন।" else "Shareholder '${objection.shareholderName}' has confirmed and settled the objection.",
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    type = "profit_update",
+                    projectId = objection.projectId
+                )
+            )
+            _uiMessage.emit(if (isBengali.value) "আপত্তিটি সফলভাবে নিষ্পত্তি করা হয়েছে।" else "Objection resolved successfully.")
         }
     }
 
@@ -562,7 +745,8 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                     title = "Notice of Cancellation Action",
                     message = "Notice: Admin has requested cancel of profile for shareholder '${shareholder.fullName} (${shareholder.sharePercentage}%)'. Buyer: '$buyerName'. Pending approval of remaining shareholders.",
                     date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                    type = "harvest_reminder"
+                    type = "harvest_reminder",
+                    projectId = shareholder.assignedProjectId
                 )
             )
             
@@ -604,6 +788,33 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
             if (isFullyApproved) {
                 finalizeShareholderCancellation(updatedRequest)
             }
+            callback()
+        }
+    }
+
+    fun rejectCancelRequest(request: ShareholderCancelRequest, shareholderId: Int, reason: String, callback: () -> Unit = {}) {
+        viewModelScope.launch {
+            val targetUser = allUsers.value.find { it.id == request.shareholderId }
+            val projId = targetUser?.assignedProjectId
+            
+            val userReason = if (reason.isNotBlank()) reason else "No specific comments"
+            val detailString = "Request ID: SCR-${request.id}\nDetails: Resigning member: ${request.shareholderName} (${request.sharePercentage}% shares)\nRejected by Shareholder ID: $shareholderId\nReason: $userReason"
+            val updatedRequest = request.copy(
+                status = "REJECTED",
+                rejectionReason = detailString
+            )
+            repository.updateCancelRequest(updatedRequest)
+            logActivity("Shareholder ID $shareholderId rejected cancellation/transfer proposal for ${request.shareholderName}. Reason: $reason")
+            repository.insertNotification(
+                Notification(
+                    title = "Proposal Rejected",
+                    message = "The share transfer proposal for '${request.shareholderName}' has been rejected. Reason: $reason",
+                    date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                    type = "alert",
+                    projectId = projId
+                )
+            )
+            _uiMessage.emit("Proposal rejected successfully.")
             callback()
         }
     }
@@ -658,7 +869,8 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                 title = "Shareholder Cancellation Done",
                 message = "${canceledUser.fullName} has been deactivated. Share assets transferred successfully to buyer '${request.buyerName}'.",
                 date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
-                type = "harvest_reminder"
+                type = "harvest_reminder",
+                projectId = canceledUser.assignedProjectId
             )
         )
     }
@@ -733,7 +945,7 @@ class FarmViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 // 2. Sync Users
-                val users = allUsers.value
+                val users = repository.getAllUsersDirect()
                 if (users.isNotEmpty()) {
                     val body = users.map { it.toMap() }
                     val response = service.upsertData("users", apiKey, authHeader, data = body)

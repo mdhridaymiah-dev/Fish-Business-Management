@@ -36,6 +36,15 @@ fun LoginScreen(viewModel: FarmViewModel) {
     var rememberMe by remember { mutableStateOf(true) }
     var showForgotPasswordDialog by remember { mutableStateOf(false) }
 
+    // Registration States
+    var isRegisterMode by remember { mutableStateOf(false) }
+    var regFullName by remember { mutableStateOf("") }
+    var regMobile by remember { mutableStateOf("") }
+    var regEmail by remember { mutableStateOf("") }
+    var regPassword by remember { mutableStateOf("") }
+    var regPasswordVisible by remember { mutableStateOf(false) }
+    var regRole by remember { mutableStateOf("SHAREHOLDER") }
+
     val isBengali by viewModel.isBengali.collectAsState()
     val darkMode by viewModel.darkMode.collectAsState()
 
@@ -172,311 +181,604 @@ fun LoginScreen(viewModel: FarmViewModel) {
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Login Card Form
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("login_card"),
-                    shape = RoundedCornerShape(24.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    )
-                ) {
-                    Column(
+                if (!isRegisterMode) {
+                    // Login Card Form
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .testTag("login_card"),
+                        shape = RoundedCornerShape(24.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
                     ) {
-                        Text(
-                            text = viewModel.t("Sign In", "লগ ইন করুন"),
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            modifier = Modifier.align(Alignment.Start)
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Email / Mobile Field
-                        OutlinedTextField(
-                            value = emailOrMobile,
-                            onValueChange = { emailOrMobile = it },
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("username_input")
-                                .minimumInteractiveComponentSize(),
-                            label = { Text(viewModel.t("Email address or Mobile no.", "মোবাইল অথবা ইমেইল অ্যাড্রেস")) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Email,
-                                    contentDescription = "User Identity"
-                                )
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = viewModel.t("Sign In", "লগ ইন করুন"),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = Modifier.align(Alignment.Start)
+                            )
 
-                        Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        // Password Field
-                        OutlinedTextField(
-                            value = password,
-                            onValueChange = { password = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("password_input")
-                                .minimumInteractiveComponentSize(),
-                            label = { Text(viewModel.t("Password", "পাসওয়ার্ড")) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Lock,
-                                    contentDescription = "Security Pass"
-                                )
-                            },
-                            trailingIcon = {
-                                IconButton(
-                                    onClick = { passwordVisible = !passwordVisible },
-                                    modifier = Modifier.minimumInteractiveComponentSize()
-                                ) {
+                            // Email / Mobile Field
+                            OutlinedTextField(
+                                value = emailOrMobile,
+                                onValueChange = { emailOrMobile = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("username_input")
+                                    .minimumInteractiveComponentSize(),
+                                label = { Text(viewModel.t("Email address or Mobile no.", "মোবাইল অথবা ইমেইল অ্যাড্রেস")) },
+                                leadingIcon = {
                                     Icon(
-                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                        contentDescription = "Toggle password visibility"
+                                        imageVector = Icons.Default.Email,
+                                        contentDescription = "User Identity"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Password Field
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("password_input")
+                                    .minimumInteractiveComponentSize(),
+                                label = { Text(viewModel.t("Password", "পাসওয়ার্ড")) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "Security Pass"
+                                    )
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { passwordVisible = !passwordVisible },
+                                        modifier = Modifier.minimumInteractiveComponentSize()
+                                    ) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = "Toggle password visibility"
+                                        )
+                                    }
+                                },
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Remember Me & Forgot Password
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable { rememberMe = !rememberMe }
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = rememberMe,
+                                        onCheckedChange = { rememberMe = it },
+                                        modifier = Modifier.minimumInteractiveComponentSize()
+                                    )
+                                    Text(
+                                        text = viewModel.t("Remember me", "আমায় মনে রাখুন"),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                            },
-                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp)
-                        )
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Remember Me & Forgot Password
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clickable { rememberMe = !rememberMe }
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Checkbox(
-                                    checked = rememberMe,
-                                    onCheckedChange = { rememberMe = it },
-                                    modifier = Modifier.minimumInteractiveComponentSize()
-                                )
                                 Text(
-                                    text = viewModel.t("Remember me", "আমায় মনে রাখুন"),
-                                    style = MaterialTheme.typography.bodySmall,
+                                    text = viewModel.t("Forgot password?", "পাসওয়ার্ড ভুলে গেছেন?"),
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = primaryColor
+                                    ),
+                                    modifier = Modifier
+                                        .clickable { showForgotPasswordDialog = true }
+                                        .padding(8.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Submit Button
+                            Button(
+                                onClick = {
+                                    if (emailOrMobile.isNotBlank() && password.isNotBlank()) {
+                                        viewModel.login(emailOrMobile.trim(), password)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("login_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = primaryColor
+                                ),
+                                enabled = emailOrMobile.isNotBlank() && password.isNotBlank()
+                            ) {
+                                Text(
+                                    text = viewModel.t("Login Securely", "সুরক্ষিত লগ ইন"),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Switch to Register Option (Bengali Language Support)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = viewModel.t("Don't have an account? ", "অ্যাকাউন্ট নেই? "),
+                                    style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Text(
+                                    text = viewModel.t("Create an account", "নতুন অ্যাকাউন্ট তৈরি করুন"),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = primaryColor,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    modifier = Modifier
+                                        .clickable { isRegisterMode = true }
+                                        .padding(4.dp)
+                                        .testTag("go_to_register")
+                                )
                             }
 
-                            Text(
-                                text = viewModel.t("Forgot password?", "পাসওয়ার্ড ভুলে গেছেন?"),
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = primaryColor
-                                ),
-                                modifier = Modifier
-                                    .clickable { showForgotPasswordDialog = true }
-                                    .padding(8.dp)
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            // Quick Account Access Panel
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant
                             )
-                        }
+                            
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Text(
+                                text = viewModel.t("Demo Accounts (One-tap Click)", "এক ক্লিকে সহজ ডেমো লগ ইন"),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                modifier = Modifier.align(Alignment.Start)
+                            )
 
-                        Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                        // Submit Button
-                        Button(
-                            onClick = {
-                                if (emailOrMobile.isNotBlank() && password.isNotBlank()) {
-                                    viewModel.login(emailOrMobile.trim(), password)
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // Admin Chip Button
+                                Card(
+                                    onClick = {
+                                        emailOrMobile = "mdhridaymiah@gmail.com"
+                                        password = "admin"
+                                        viewModel.login("mdhridaymiah@gmail.com", "admin")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AdminPanelSettings,
+                                                contentDescription = "Admin icon",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = viewModel.t("Admin: Hridoy", "প্রধান এডমিন: হৃদয়"),
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                            Text(
+                                                text = viewModel.t("Email: mdhridaymiah@gmail.com  |  Pass: admin", "ইমেইল: mdhridaymiah@gmail.com  |  পাস: admin"),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
                                 }
-                            },
+
+                                // Manager Chip Button
+                                Card(
+                                    onClick = {
+                                        emailOrMobile = "01700000002"
+                                        password = "manager"
+                                        viewModel.login("01700000002", "manager")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ManageAccounts,
+                                                contentDescription = "Manager icon",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = viewModel.t("Manager: Karim", "খামার ম্যানেজার: করিম"),
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                            Text(
+                                                text = viewModel.t("ID: 01700000002  |  Pass: manager", "মোবাইল: 01700000002  |  পাস: manager"),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // Shareholder Chip Button
+                                Card(
+                                    onClick = {
+                                        emailOrMobile = "01700000003"
+                                        password = "shareholder"
+                                        viewModel.login("01700000003", "shareholder")
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(8.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.People,
+                                                contentDescription = "Shareholder icon",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = viewModel.t("Shareholder: Rahim", "শেয়ারহোল্ডার: রহিম"),
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                            )
+                                            Text(
+                                                text = viewModel.t("ID: 01700000003  |  Pass: shareholder", "মোবাইল: 01700000003  |  পাস: shareholder"),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Registration Card Form
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("register_card"),
+                        shape = RoundedCornerShape(24.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface
+                        )
+                    ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(50.dp)
-                                .testTag("login_button"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = primaryColor
-                            ),
-                            enabled = emailOrMobile.isNotBlank() && password.isNotBlank()
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = viewModel.t("Login Securely", "সুরক্ষিত লগ ইন"),
-                                style = MaterialTheme.typography.titleMedium.copy(
+                                text = viewModel.t("Create an Account", "অ্যাকাউন্ট তৈরি করুন"),
+                                style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                modifier = Modifier.align(Alignment.Start)
                             )
-                        }
 
-                        Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            Text(
+                                text = viewModel.t("Register credentials as member", "মৎস্য ইআরপিতে মেম্বার হিসেবে যুক্ত হোন"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.align(Alignment.Start)
+                            )
 
-                        // Quick Account Access Panel
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-                        
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        Text(
-                            text = viewModel.t("Demo Accounts (One-tap Click)", "এক ক্লিকে সহজ ডেমো লগ ইন"),
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            modifier = Modifier.align(Alignment.Start)
-                        )
+                            Spacer(modifier = Modifier.height(16.dp))
 
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Admin Chip Button
-                            Card(
-                                onClick = {
-                                    emailOrMobile = "mdhridaymiah@gmail.com"
-                                    password = "admin"
-                                    viewModel.login("mdhridaymiah@gmail.com", "admin")
+                            // 1. Full Name Field
+                            OutlinedTextField(
+                                value = regFullName,
+                                onValueChange = { regFullName = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("register_fullname_input")
+                                    .minimumInteractiveComponentSize(),
+                                label = { Text(viewModel.t("Full Name", "আপনার নাম")) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = "Full Name Icon"
+                                    )
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
-                                ),
+                                singleLine = true,
                                 shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 2. Mobile Number Field
+                            OutlinedTextField(
+                                value = regMobile,
+                                onValueChange = { regMobile = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("register_mobile_input")
+                                    .minimumInteractiveComponentSize(),
+                                label = { Text(viewModel.t("Mobile no.", "মোবাইল নম্বর")) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Phone,
+                                        contentDescription = "Mobile Icon"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 3. Email Field
+                            OutlinedTextField(
+                                value = regEmail,
+                                onValueChange = { regEmail = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("register_email_input")
+                                    .minimumInteractiveComponentSize(),
+                                label = { Text(viewModel.t("Email address", "ইমেইল অ্যাড্রেস")) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Email,
+                                        contentDescription = "Email Icon"
+                                    )
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 4. Password Field
+                            OutlinedTextField(
+                                value = regPassword,
+                                onValueChange = { regPassword = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("register_password_input")
+                                    .minimumInteractiveComponentSize(),
+                                label = { Text(viewModel.t("Password", "পাসওয়ার্ড")) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = "Security Pass Icon"
+                                    )
+                                },
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { regPasswordVisible = !regPasswordVisible },
+                                        modifier = Modifier.minimumInteractiveComponentSize()
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.AdminPanelSettings,
-                                            contentDescription = "Admin icon",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
+                                            imageVector = if (regPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = "Toggle password visibility"
                                         )
                                     }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = viewModel.t("Admin: Hridoy", "প্রধান এডমিন: হৃদয়"),
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                                },
+                                visualTransformation = if (regPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // 5. Select Role
+                            Text(
+                                text = viewModel.t("Select Account Role", "অ্যাকাউন্টের ভূমিকা নির্বাচন করুন"),
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                ),
+                                modifier = Modifier.align(Alignment.Start)
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf("MANAGER", "SHAREHOLDER").forEach { role ->
+                                    val isSelected = regRole == role
+                                    val roleLabel = when (role) {
+                                        "MANAGER" -> viewModel.t("Manager", "ম্যানেজার")
+                                        else -> viewModel.t("Shareholder", "শেয়ারহোল্ডার")
+                                    }
+                                    OutlinedCard(
+                                        onClick = { regRole = role },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.outlinedCardColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        border = CardDefaults.outlinedCardBorder().copy(
+                                            brush = Brush.linearGradient(
+                                                colors = if (isSelected) listOf(primaryColor, secondaryColor) else listOf(MaterialTheme.colorScheme.outlineVariant, MaterialTheme.colorScheme.outlineVariant)
+                                            )
                                         )
-                                        Text(
-                                            text = viewModel.t("Email: mdhridaymiah@gmail.com  |  Pass: admin", "ইমেইল: mdhridaymiah@gmail.com  |  পাস: admin"),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp, horizontal = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = roleLabel,
+                                                style = MaterialTheme.typography.labelLarge.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            // Manager Chip Button
-                            Card(
+                            Spacer(modifier = Modifier.height(20.dp))
+
+                            // Submit Register Button
+                            val isFormValid = regFullName.isNotBlank() && regMobile.isNotBlank() && regEmail.isNotBlank() && regPassword.length >= 4
+                            Button(
                                 onClick = {
-                                    emailOrMobile = "01700000002"
-                                    password = "manager"
-                                    viewModel.login("01700000002", "manager")
+                                    if (isFormValid) {
+                                        val newUser = com.example.data.User(
+                                            fullName = regFullName.trim(),
+                                            mobile = regMobile.trim(),
+                                            email = regEmail.trim(),
+                                            role = regRole,
+                                            password = regPassword,
+                                            status = "Active"
+                                        )
+                                        viewModel.registerNewUser(newUser) { success ->
+                                            if (success) {
+                                                // Pre-fill fields for immediate seamless login
+                                                emailOrMobile = regMobile
+                                                password = regPassword
+                                                isRegisterMode = false
+                                                
+                                                regFullName = ""
+                                                regMobile = ""
+                                                regEmail = ""
+                                                regPassword = ""
+                                            }
+                                        }
+                                    }
                                 },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(50.dp)
+                                    .testTag("register_button"),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = primaryColor
                                 ),
-                                shape = RoundedCornerShape(12.dp)
+                                enabled = isFormValid
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.ManageAccounts,
-                                            contentDescription = "Manager icon",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = viewModel.t("Manager: Karim", "খামার ম্যানেজার: করিম"),
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                                        )
-                                        Text(
-                                            text = viewModel.t("ID: 01700000002  |  Pass: manager", "মোবাইল: 01700000002  |  পাস: manager"),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = viewModel.t("Register Now", "নিবন্ধন সম্পন্ন করুন"),
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                )
                             }
 
-                            // Shareholder Chip Button
-                            Card(
-                                onClick = {
-                                    emailOrMobile = "01700000003"
-                                    password = "shareholder"
-                                    viewModel.login("01700000003", "shareholder")
-                                },
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Toggle Back Link
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-                                ),
-                                shape = RoundedCornerShape(12.dp)
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(34.dp)
-                                            .background(MaterialTheme.colorScheme.tertiary, RoundedCornerShape(8.dp)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.People,
-                                            contentDescription = "Shareholder icon",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Column {
-                                        Text(
-                                            text = viewModel.t("Shareholder: Rahim", "শেয়ারহোল্ডার: রহিম"),
-                                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
-                                        )
-                                        Text(
-                                            text = viewModel.t("ID: 01700000003  |  Pass: shareholder", "মোবাইল: 01700000003  |  পাস: shareholder"),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = viewModel.t("Already have an account? ", "ইতিমধ্যে অ্যাকাউন্ট আছে? "),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = viewModel.t("Sign In", "লগ ইন করুন"),
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = primaryColor,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    modifier = Modifier
+                                        .clickable { isRegisterMode = false }
+                                        .padding(4.dp)
+                                        .testTag("go_to_login")
+                                )
                             }
                         }
                     }

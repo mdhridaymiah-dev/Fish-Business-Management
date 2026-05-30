@@ -100,7 +100,8 @@ fun Expense.toMap(): Map<String, Any?> = mapOf(
     "requesterId" to requesterId,
     "isPettyCash" to isPettyCash,
     "approvedByShareholders" to approvedByShareholders,
-    "approvalStatus" to approvalStatus
+    "approvalStatus" to approvalStatus,
+    "rejectionReason" to rejectionReason
 )
 
 fun Sale.toMap(): Map<String, Any?> = mapOf(
@@ -179,7 +180,8 @@ fun Map<String, Any?>.toExpense(): Expense = Expense(
     requesterId = (this["requesterId"] as? Number)?.toInt() ?: 0,
     isPettyCash = this["isPettyCash"] as? Boolean ?: false,
     approvedByShareholders = this["approvedByShareholders"] as? String ?: "",
-    approvalStatus = this["approvalStatus"] as? String ?: "PENDING"
+    approvalStatus = this["approvalStatus"] as? String ?: "PENDING",
+    rejectionReason = this["rejectionReason"] as? String ?: ""
 )
 
 fun Map<String, Any?>.toSale(): Sale = Sale(

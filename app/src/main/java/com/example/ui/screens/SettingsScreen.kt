@@ -24,6 +24,7 @@ fun SettingsScreen(viewModel: FarmViewModel) {
     // Theme and Currency global selectors
     val isDarkMode by viewModel.darkMode.collectAsState()
     val currencySelected by viewModel.currencySymbol.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     var farmName by remember { mutableStateOf("Hridoy Aqua Breeding & Culture Limited") }
     var locationRegion by remember { mutableStateOf("Mymensingh Divisional, Bangladesh") }
@@ -37,13 +38,13 @@ fun SettingsScreen(viewModel: FarmViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            "Settings & System Setup",
+            viewModel.t("Settings & System Setup", "সেটিংস ও সিস্টেম সেটআপ"),
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            "Configure user profile settings, visual themes switcher, currency indicators, and manage database security backups.",
+            viewModel.t("Configure user profile settings, visual themes switcher, currency indicators, and manage database security backups.", "ইউজার প্রোফাইল সেটিংস, থিম সুইচার, কারেন্সি ইন্ডিকেটর এবং ডাটাবেজ ব্যাকআপ পরিচালনা করুন।"),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -55,11 +56,11 @@ fun SettingsScreen(viewModel: FarmViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Personalized Active Account Profile", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Text("FullName Profile: ${currentUser?.fullName}", fontSize = 13.sp)
-                Text("Registered Mobile: ${currentUser?.mobile}", fontSize = 13.sp)
-                Text("Logging email ID: ${currentUser?.email}", fontSize = 13.sp)
-                Text("Venture System Role Mode: ${currentUser?.role}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(viewModel.t("Personalized Active Account Profile", "অ্যাক্টিভ ইউজার অ্যাকাউন্ট প্রোফাইল"), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text("${viewModel.t("Full Name:", "পূর্ণ নাম:")} ${currentUser?.fullName}", fontSize = 13.sp)
+                Text("${viewModel.t("Registered Mobile:", "নিবন্ধিত মোবাইল:")} ${currentUser?.mobile}", fontSize = 13.sp)
+                Text("${viewModel.t("Logged Email:", "লগইন ইমেইল:")} ${currentUser?.email}", fontSize = 13.sp)
+                Text("${viewModel.t("Venture System Role Mode:", "সিস্টেম রোল বা ভূমিকা:")} ${currentUser?.role}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
         }
 
@@ -68,23 +69,23 @@ fun SettingsScreen(viewModel: FarmViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Corporate Company / Farm Information", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(viewModel.t("Corporate Company / Farm Information", "করপোরেট কোম্পানি / খামার পরিচিতি"), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 OutlinedTextField(
                     value = farmName,
                     onValueChange = { farmName = it },
-                    label = { Text("Farm Corporate Name") },
+                    label = { Text(viewModel.t("Farm Corporate Name", "খামারের নাম")) },
                     modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
                 )
                 OutlinedTextField(
                     value = locationRegion,
                     onValueChange = { locationRegion = it },
-                    label = { Text("Physical Location Region") },
+                    label = { Text(viewModel.t("Physical Location Region", "খামারের ভৌগলিক অবস্থান দেশ/অঞ্চল")) },
                     modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
                 )
                 OutlinedTextField(
                     value = contactPhone,
                     onValueChange = { contactPhone = it },
-                    label = { Text("Support Contact Phone") },
+                    label = { Text(viewModel.t("Support Contact Phone", "যোগাযোগের ফোন নম্বর")) },
                     modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
                 )
             }
@@ -95,7 +96,7 @@ fun SettingsScreen(viewModel: FarmViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Display & System Configuration", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                Text(viewModel.t("Display & System Configuration", "ডিসপ্লে ও সাধারণ সিস্টেম বিন্যাস"), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 
                 // Light & Dark theme toggle row
                 Row(
@@ -106,7 +107,7 @@ fun SettingsScreen(viewModel: FarmViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(imageVector = if (isDarkMode) Icons.Default.DarkMode else Icons.Default.LightMode, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text("Theme Mode (Light / Dark)", fontSize = 13.sp)
+                        Text(viewModel.t("Theme Mode (Light / Dark)", "থিম মোড (লাইট / ডার্ক)"), fontSize = 13.sp)
                     }
                     Switch(
                         checked = isDarkMode,
@@ -121,7 +122,7 @@ fun SettingsScreen(viewModel: FarmViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Currency Identifier Symbol Option", fontSize = 13.sp)
+                    Text(viewModel.t("Currency Identifier Symbol Option", "কারেনসি বা মুদ্রার প্রতীকসমূহ"), fontSize = 13.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("৳", "$", "Rs").forEach { symbol ->
                             FilterChip(

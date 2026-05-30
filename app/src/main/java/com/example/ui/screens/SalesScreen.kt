@@ -27,6 +27,7 @@ fun SalesScreen(viewModel: FarmViewModel, onAddSale: () -> Unit) {
     val sales by viewModel.allSales.collectAsState()
     val projects by viewModel.allProjects.collectAsState()
     val currentUser by viewModel.currentUser.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     val currency = viewModel.currencySymbol.collectAsState().value
     val userRole = currentUser?.role ?: "ADMIN"
@@ -139,7 +140,7 @@ fun SalesScreen(viewModel: FarmViewModel, onAddSale: () -> Unit) {
             projects = projects.filter { userRole == "ADMIN" || it.id == userProjId },
             viewModel = viewModel,
             onDismiss = { showFormDialog = false },
-            onSave = { date, fish, qty, weight, price, buyer, payment, invoice, projId ->
+            onSave = { date, fish, qty, weight, price, buyer, payment, invoice, projId, received, due ->
                 val totalVal = weight * price
                 val updatedSale = Sale(
                     id = selectedSaleForEdit?.id ?: 0,
@@ -152,7 +153,9 @@ fun SalesScreen(viewModel: FarmViewModel, onAddSale: () -> Unit) {
                     buyerName = buyer,
                     paymentMethod = payment,
                     invoiceNumber = invoice,
-                    projectId = projId
+                    projectId = projId,
+                    receivedAmount = received,
+                    dueAmount = due
                 )
                 viewModel.saveSale(updatedSale) { success ->
                     if (success) showFormDialog = false
@@ -232,8 +235,26 @@ fun SaleItemCard(
                     Text("$currency ${sale.price}", fontWeight = FontWeight.Medium, fontSize = 13.sp)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(viewModel.t("Revenue Received", "মোট প্রাপ্ত মূল্য"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("$currency ${sale.totalPrice}", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF2E7D32))
+                    Text(viewModel.t("Total Price", "মোট মূল্য"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("$currency ${sale.totalPrice}", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Received and Due statistics
+            Row(
+                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(Color(0xFFEEEEEE).copy(alpha = 0.5f)).padding(8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(viewModel.t("Amount Received", "গ্রহণকৃত টাকা"), fontSize = 11.sp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                    Text("$currency ${sale.receivedAmount}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF2E7D32))
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(viewModel.t("Remaining Due", "বাকি পরিমাণ"), fontSize = 11.sp, color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
+                    Text("$currency ${sale.dueAmount}", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFC62828))
                 }
             }
 
@@ -273,7 +294,7 @@ fun SaleFormDialog(
     projects: List<Project>,
     viewModel: FarmViewModel,
     onDismiss: () -> Unit,
-    onSave: (String, String, Int, Double, Double, String, String, String, Int) -> Unit
+    onSave: (String, String, Int, Double, Double, String, String, String, Int, Double, Double) -> Unit
 ) {
     var date by remember { mutableStateOf(sale?.saleDate ?: "") }
     var fishType by remember { mutableStateOf(sale?.fishType ?: "") }
@@ -283,6 +304,7 @@ fun SaleFormDialog(
     var buyer by remember { mutableStateOf(sale?.buyerName ?: "") }
     var paymentMethod by remember { mutableStateOf(sale?.paymentMethod ?: "Cash") }
     var invoice by remember { mutableStateOf(sale?.invoiceNumber ?: "INV-2026-${(100..999).random()}") }
+    var receivedStr by remember { mutableStateOf(sale?.receivedAmount?.toString() ?: "") }
 
     var selectedProjectId by remember { mutableStateOf(sale?.projectId ?: projects.firstOrNull()?.id ?: 0) }
 
@@ -373,6 +395,42 @@ fun SaleFormDialog(
                     )
                 }
 
+                // Total Price Calculation helper reference view
+                val weightNum = weightStr.toDoubleOrNull() ?: 0.0
+                val priceNum = priceStr.toDoubleOrNull() ?: 0.0
+                val totalBillCalc = weightNum * priceNum
+                val recNum = receivedStr.toDoubleOrNull() ?: totalBillCalc
+                val dueCalculated = totalBillCalc - recNum
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "${viewModel.t("Computed Bill Value:", "হিসাব অনুযায়ী মোট বিল:")} ৳ $totalBillCalc",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            text = "${viewModel.t("Auto Calculated Remaining Due:", "বকেয়া বাকি হিসাব:")} ৳ $dueCalculated",
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 11.sp,
+                            color = if (dueCalculated > 0.0) Color.Red else Color.DarkGray
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = receivedStr,
+                        onValueChange = { receivedStr = it },
+                        label = { Text(viewModel.t("Received Amount (টাকা আদায়)", "আদায়কৃত বা গৃহীত টাকা")) },
+                        placeholder = { Text("default: full payment") },
+                        modifier = Modifier.weight(1f).minimumInteractiveComponentSize()
+                    )
+                }
+
                 Text(viewModel.t("Payment Method Option", "টাকা আদায়ের মাধ্যম"))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -395,8 +453,11 @@ fun SaleFormDialog(
                     val qtyVal = qtyStr.toIntOrNull() ?: 1
                     val weightVal = weightStr.toDoubleOrNull() ?: 0.0
                     val priceVal = priceStr.toDoubleOrNull() ?: 0.0
+                    val totBill = weightVal * priceVal
+                    val recVal = receivedStr.toDoubleOrNull() ?: totBill
+                    val dueVal = totBill - recVal
                     if (fishType.isNotBlank() && selectedProjectId != 0 && date.isNotBlank()) {
-                        onSave(date, fishType, qtyVal, weightVal, priceVal, buyer, paymentMethod, invoice, selectedProjectId)
+                        onSave(date, fishType, qtyVal, weightVal, priceVal, buyer, paymentMethod, invoice, selectedProjectId, recVal, dueVal)
                     }
                 },
                 modifier = Modifier.minimumInteractiveComponentSize()
@@ -465,9 +526,17 @@ fun InvoiceDetailsDialog(
                         Text("$currency ${sale.price} / Kg", fontSize = 12.sp)
                     }
                     Divider(modifier = Modifier.padding(vertical = 8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(viewModel.t("Total Bill Value:", "ভোগ্য মোট মূল্য:"), fontSize = 12.sp)
+                        Text("$currency ${sale.totalPrice}", fontWeight = FontWeight.Medium, fontSize = 12.sp)
+                    }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(viewModel.t("Net Bill Value:", "মোট আদায়কৃত মূল্য বিলে:"), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        Text("$currency ${sale.totalPrice}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF2E7D32))
+                        Text(viewModel.t("Amount Received:", "আদায়কৃত বা গৃহীত টাকা:"), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF2E7D32))
+                        Text("$currency ${sale.receivedAmount}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF2E7D32))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(viewModel.t("Remaining Due Amount:", "বাকি বা বকেয়া টাকা:"), fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFC62828))
+                        Text("$currency ${sale.dueAmount}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFFC62828))
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(viewModel.t("Payment Method Setup:", "টাকা আদায়ের মাধ্যম:"), fontSize = 12.sp)

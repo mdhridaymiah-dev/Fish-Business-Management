@@ -27,10 +27,14 @@ fun AdminScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
     val projects by viewModel.allProjects.collectAsState()
     val expenses by viewModel.allExpenses.collectAsState()
     val activityLogs by viewModel.activityLogs.collectAsState()
+    val isBengali by viewModel.isBengali.collectAsState()
 
     var showUserFormDialog by remember { mutableStateOf(false) }
     var selectedUserForEdit by remember { mutableStateOf<User?>(null) }
     var activeAdminTab by remember { mutableStateOf("Enroll User") } // Tab Options: Enroll User, Expense Approval, Audit Logs
+
+    var showRejectDialog by remember { mutableStateOf(false) }
+    var expenseToReject by remember { mutableStateOf<Expense?>(null) }
 
     Column(
         modifier = Modifier
@@ -155,7 +159,15 @@ fun AdminScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
                                     projectName = projName,
                                     onApprove = {
                                         viewModel.approveExpense(exp)
-                                    }
+                                    },
+                                    onReject = {
+                                        expenseToReject = exp
+                                        showRejectDialog = true
+                                    },
+                                    onDelete = {
+                                        viewModel.deleteExpense(exp)
+                                    },
+                                    viewModel = viewModel
                                 )
                             }
                         }
@@ -207,6 +219,7 @@ fun AdminScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
         UserFormDialog(
             user = selectedUserForEdit,
             projects = projects,
+            viewModel = viewModel,
             onDismiss = { showUserFormDialog = false },
             onSave = { name, mobile, email, password, role, assignedProj, sharePercent, status ->
                 val record = User(
@@ -223,6 +236,21 @@ fun AdminScreen(viewModel: FarmViewModel, onAddUser: () -> Unit) {
                 viewModel.saveUser(record) { success ->
                     if (success) showUserFormDialog = false
                 }
+            }
+        )
+    }
+
+    if (showRejectDialog && expenseToReject != null) {
+        RejectionReasonDialog(
+            viewModel = viewModel,
+            onDismiss = {
+                showRejectDialog = false
+                expenseToReject = null
+            },
+            onConfirm = { reason ->
+                viewModel.rejectExpense(expenseToReject!!, reason)
+                showRejectDialog = false
+                expenseToReject = null
             }
         )
     }
@@ -278,33 +306,66 @@ fun UserEnrollCard(
 fun PendingExpenseApprovalRow(
     expense: Expense,
     projectName: String,
-    onApprove: () -> Unit
+    onApprove: () -> Unit,
+    onReject: () -> Unit,
+    onDelete: () -> Unit,
+    viewModel: com.example.ui.FarmViewModel
 ) {
     Card(
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .padding(12.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+                .fillMaxWidth()
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(expense.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("Category: ${expense.category} | Pond: $projectName", fontSize = 11.sp)
-                Text("Requested Cost Value: BDT ${expense.amount}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
-            }
-            Button(
-                onClick = onApprove,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
-                modifier = Modifier.minimumInteractiveComponentSize()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Approve", fontSize = 10.sp)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(expense.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("${viewModel.t("Category", "খাত")}: ${expense.category} | ${viewModel.t("Pond", "পুকুর")}: $projectName", fontSize = 11.sp)
+                    Text("${viewModel.t("Amount", "পরিমাণ")}: BDT ${expense.amount}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Button(
+                    onClick = onApprove,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.weight(1f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(11.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(viewModel.t("Approve", "অনুমোদন"), fontSize = 9.sp, color = Color.White)
+                }
+                Button(
+                    onClick = onReject,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.weight(1f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(viewModel.t("Reject", "বাতিল"), fontSize = 9.sp, color = Color.White)
+                }
+                Button(
+                    onClick = onDelete,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.weight(1.3f).height(32.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(viewModel.t("Reject & Delete", "বাতিল ও মুছুন"), fontSize = 9.sp, color = Color.White)
+                }
             }
         }
     }
@@ -314,6 +375,7 @@ fun PendingExpenseApprovalRow(
 fun UserFormDialog(
     user: User?,
     projects: List<Project>,
+    viewModel: com.example.ui.FarmViewModel,
     onDismiss: () -> Unit,
     onSave: (String, String, String, String, String, Int?, Double, String) -> Unit
 ) {
@@ -329,7 +391,7 @@ fun UserFormDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(if (user == null) "Log New User Profile" else "Adjust Profile configurations")
+            Text(if (user == null) viewModel.t("Log New User Profile", "নতুন অ্যাকাউন্ট তৈরি করুন") else viewModel.t("Adjust Profile configurations", "অ্যাকাউন্ট পরিবর্তন করুন"))
         },
         text = {
             Column(
@@ -339,20 +401,20 @@ fun UserFormDialog(
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Full Profile Name") },
+                    label = { Text(viewModel.t("Full Profile Name", "পূর্ণ নাম")) },
                     modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = email,
                         onValueChange = { email = it },
-                        label = { Text("Login Email ID") },
+                        label = { Text(viewModel.t("Login Email", "ইমেইল")) },
                         modifier = Modifier.weight(1f).minimumInteractiveComponentSize()
                     )
                     OutlinedTextField(
                         value = mobile,
                         onValueChange = { mobile = it },
-                        label = { Text("Mobile Contact") },
+                        label = { Text(viewModel.t("Mobile Contact", "মোবাইল নম্বর")) },
                         modifier = Modifier.weight(1f).minimumInteractiveComponentSize()
                     )
                 }
@@ -360,28 +422,28 @@ fun UserFormDialog(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Login Password") },
+                    label = { Text(viewModel.t("Login Password", "পাসওয়ার্ড")) },
                     modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
                 )
 
                 // Role Options selector
-                Text("Assign Role Mode", modifier = Modifier.padding(top = 4.dp))
+                Text(viewModel.t("Assign Role Mode", "রোল বা দায়িত্ব নির্ধারণ করুন"), modifier = Modifier.padding(top = 4.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf("ADMIN", "MANAGER", "SHAREHOLDER").forEach { rOption ->
+                    listOf("MANAGER", "SHAREHOLDER").forEach { rOption ->
                         FilterChip(
                             selected = role == rOption,
                             onClick = { role = rOption },
-                            label = { Text(rOption, fontSize = 9.sp) },
+                            label = { Text(viewModel.t(rOption, if(rOption == "ADMIN") "এডমিন" else if(rOption == "MANAGER") "ম্যানেজার" else "শেয়ারহোল্ডার"), fontSize = 9.sp) },
                             modifier = Modifier.minimumInteractiveComponentSize()
                         )
                     }
                 }
 
                 if (role != "ADMIN") {
-                    Text("Select Assigned Operational Pond Project:")
+                    Text(viewModel.t("Assign or Transfer Project/Pond:", "নির্ধারিত প্রজেক্ট নির্ধারণ বা অন্য প্রজেক্টে স্থানান্তর করুন:"))
                     projects.forEach { proj ->
                         Row(
                             modifier = Modifier
@@ -411,7 +473,7 @@ fun UserFormDialog(
                     OutlinedTextField(
                         value = sharePercentageStr,
                         onValueChange = { sharePercentageStr = it },
-                        label = { Text("Shareholder Equity percentage (%)") },
+                        label = { Text(viewModel.t("Shareholder Equity percentage (%)", "শেয়ার অংশ (%)")) },
                         modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize()
                     )
                 }
@@ -421,18 +483,18 @@ fun UserFormDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Account Status")
+                    Text(viewModel.t("Account Status", "অ্যাকাউন্ট স্ট্যাটাস"))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = status == "Active",
                             onClick = { status = "Active" },
-                            label = { Text("Active") },
+                            label = { Text(viewModel.t("Active", "সক্রিয়")) },
                             modifier = Modifier.minimumInteractiveComponentSize()
                         )
                         FilterChip(
                             selected = status == "Inactive",
                             onClick = { status = "Inactive" },
-                            label = { Text("Inactive") },
+                            label = { Text(viewModel.t("Inactive", "নিষ্ক্রিয়")) },
                             modifier = Modifier.minimumInteractiveComponentSize()
                         )
                     }
@@ -450,12 +512,12 @@ fun UserFormDialog(
                 },
                 modifier = Modifier.minimumInteractiveComponentSize()
             ) {
-                Text("Enroll User")
+                Text(viewModel.t("Save Account", "সংরক্ষণ করুন"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.minimumInteractiveComponentSize()) {
-                Text("Cancel")
+                Text(viewModel.t("Cancel", "বাতিল"))
             }
         }
     )
